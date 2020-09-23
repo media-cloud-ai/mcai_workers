@@ -1,0 +1,17 @@
+[package]
+name = "mcai-workers"
+version = "0.0.1"
+authors = [
+  "Marc-Antoine Arnaud <maarnaud@media-io.com>"
+]
+edition = "2018"
+
+[dependencies]
+base64 = "0.12"
+cargo_toml = "0.8"
+clap = "2.33"
+colored = "2"
+github-rs = "0.7"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
