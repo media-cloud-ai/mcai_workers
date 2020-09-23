@@ -4,6 +4,8 @@ version = "0.0.1"
 authors = [
   "Marc-Antoine Arnaud <maarnaud@media-io.com>"
 ]
+description = "A command line tool to manage workers for the Media-Cloud-AI project"
+license = "MIT"
 edition = "2018"
 
 [dependencies]
