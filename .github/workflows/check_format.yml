@@ -1,25 +1,26 @@
+
 on: [push, pull_request]
 
-name: Clippy
+name: Check format
 
 jobs:
-  clippy:
-    name: Clippy
+  rustfmt:
+    name: Format
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install stable toolchain with clippy available
+      - name: Install stable toolchain with rustfmt available
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
-          components: clippy
+          components: rustfmt
 
-      - name: Run cargo clippy
+      - name: Run cargo fmt
         uses: actions-rs/cargo@v1
         with:
-          command: clippy
-          args: -- -D warnings
+          command: fmt
+          args: --all -- --check
