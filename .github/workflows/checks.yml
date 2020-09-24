@@ -45,8 +45,8 @@ jobs:
           command: clippy
           args: -- -D warnings
 
-  build:
-    name: Build
+  linux-build:
+    name: Build on Linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -59,8 +59,8 @@ jobs:
           command: build
           args: --release
 
-  build:
-    name: Build
+  windows-build:
+    name: Build on Windows
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v2
@@ -73,8 +73,8 @@ jobs:
           command: build
           args: --release
 
-  build:
-    name: Build
+  macos-build:
+    name: Build on Mac OS
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v2
