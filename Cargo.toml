@@ -5,6 +5,8 @@ authors = [
   "Marc-Antoine Arnaud <maarnaud@media-io.com>"
 ]
 description = "A command line tool to manage workers for the Media-Cloud-AI project"
+repository = "https://github.com/media-cloud-ai/mcai_workers"
+homepage = "https://github.com/media-cloud-ai/mcai_workers"
 license = "MIT"
 edition = "2018"
 
