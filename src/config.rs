@@ -8,7 +8,10 @@ pub struct McaiWorkersConfig {
 pub struct RepoConfig {
   pub name: String,
   pub provider: Provider,
-  pub cargo_toml_manifest: Option<String>,
+  // list of Cargo.toml contents for this repository
+  pub manifest_contents: Vec<String>,
+  // list of Cargo.toml filenames for this repository
+  pub manifest_filenames: Vec<String>,
   // list of Dockerfile contents for this repository
   pub docker_contents: Vec<String>,
   // list of Dockerfile filenames for this repository
@@ -20,7 +23,8 @@ impl RepoConfig {
     RepoConfig {
       name: name.to_string(),
       provider,
-      cargo_toml_manifest: None,
+      manifest_contents: vec![],
+      manifest_filenames: vec![],
       docker_contents: vec![],
       docker_filenames: vec![],
     }
