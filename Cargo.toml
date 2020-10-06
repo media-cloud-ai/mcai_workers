@@ -1,10 +1,12 @@
 [package]
 name = "mcai-workers"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
   "Marc-Antoine Arnaud <maarnaud@media-io.com>"
 ]
 description = "A command line tool to manage workers for the Media-Cloud-AI project"
+repository = "https://github.com/media-cloud-ai/mcai_workers"
+homepage = "https://github.com/media-cloud-ai/mcai_workers"
 license = "MIT"
 edition = "2018"
 
@@ -13,7 +15,13 @@ base64 = "0.12"
 cargo_toml = "0.8"
 clap = "2.33"
 colored = "2"
+confy = "0.4"
+console = "0.12"
+directories = "3.0"
+dockerfile-parser = "0.5"
 github-rs = "0.7"
+gitlab = "0.1304"
+reqwest = {version = "0.10", features = ["json", "native-tls"]}
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
