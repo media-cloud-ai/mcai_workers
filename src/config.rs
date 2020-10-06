@@ -1,7 +1,28 @@
+use crate::PROJECT_NAME;
+use directories::ProjectDirs;
+use semver::Version;
+
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct McaiWorkersConfig {
-  version: u8,
+  pub rust_version: Option<Version>,
+  pub mcai_sdk_version: Option<Version>,
   pub repos: Vec<RepoConfig>,
+}
+
+impl McaiWorkersConfig {
+  pub fn open() -> Self {
+    confy::load(PROJECT_NAME).unwrap()
+  }
+
+  pub fn store(&self) {
+    confy::store(PROJECT_NAME, self).unwrap();
+
+    let project = ProjectDirs::from("rs", "", "mcai-workers").unwrap();
+    println!(
+      "Stored configuration in folder: {}",
+      project.preference_dir().display()
+    );
+  }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

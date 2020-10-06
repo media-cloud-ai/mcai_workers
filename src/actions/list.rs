@@ -4,6 +4,7 @@ use clap::ArgMatches;
 use colored::Colorize;
 use console::Emoji;
 use dockerfile_parser::Dockerfile;
+use semver::VersionReq;
 
 pub fn list<'a>(cfg: &McaiWorkersConfig, matches: &ArgMatches<'a>) {
   for repo in &cfg.repos {
@@ -17,12 +18,44 @@ pub fn list<'a>(cfg: &McaiWorkersConfig, matches: &ArgMatches<'a>) {
     for manifest_content in &repo.manifest_contents {
       let manifest = Manifest::from_str(&manifest_content).unwrap();
 
-      if let Some(version) = mcai_worker_sdk_version(&manifest) {
+      if let Some(package) = &manifest.package {
         println!(
-          "  {} {} {}",
+          "  {} {} {}{}",
+          Emoji("📙", &"=>".magenta().bold()),
+          package.name.yellow(),
+          "v".yellow(),
+          package.version.yellow()
+        );
+      }
+
+      if let Some(version) = mcai_worker_sdk_version(&manifest) {
+        let extra = cfg
+          .mcai_sdk_version
+          .as_ref()
+          .map(|mcai_sdk_version| {
+            VersionReq::parse(&version)
+              .map(|version| {
+                if !version.matches(&mcai_sdk_version) {
+                  Some(format!(
+                    "{} Update required to v{}",
+                    Emoji("❗", "=>"),
+                    mcai_sdk_version
+                  ))
+                } else {
+                  None
+                }
+              })
+              .ok()
+              .unwrap_or_default()
+          })
+          .unwrap_or_default();
+
+        println!(
+          "  {} {} {} {}",
           Emoji("📦", &"=>".magenta().bold()),
           "MCAI Worker SDK".magenta(),
-          version.magenta()
+          version.magenta(),
+          extra.unwrap_or_else(|| "".to_string()).red()
         );
       }
     }
@@ -88,6 +121,8 @@ fn docker_information(dockerfile: &Dockerfile) -> Option<String> {
   for image in &images {
     let reference_images = vec![
       "rust",
+      "ubuntu",
+      "debian",
       "mediacloudai/rs_command_line_worker",
       "mediacloudai/py_mcai_worker_sdk",
       "mediacloudai/c_mcai_worker_sdk",
@@ -99,6 +134,8 @@ fn docker_information(dockerfile: &Dockerfile) -> Option<String> {
 
     let reference_image = match image.image.as_str() {
       "rust" => "Rust",
+      "ubuntu" => "Ubuntu",
+      "debian" => "Debian",
       "mediacloudai/rs_command_line_worker" => "Command Line",
       "mediacloudai/py_mcai_worker_sdk" => "Python MCAI SDK",
       "mediacloudai/c_mcai_worker_sdk" => "C MCAI SDK",

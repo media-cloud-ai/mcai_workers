@@ -2,7 +2,6 @@ use crate::{
   config::{McaiWorkersConfig, Provider},
   github::Github,
   gitlab::Gitlab,
-  PROJECT_NAME,
 };
 use clap::ArgMatches;
 
@@ -56,5 +55,6 @@ pub fn fetch<'a>(cfg: &mut McaiWorkersConfig, matches: &ArgMatches<'a>) {
       }
     }
   }
-  confy::store(PROJECT_NAME, cfg).unwrap();
+
+  cfg.store();
 }

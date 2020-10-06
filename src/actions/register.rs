@@ -1,9 +1,5 @@
-use crate::{
-  config::{McaiWorkersConfig, Provider, RepoConfig},
-  PROJECT_NAME,
-};
+use crate::config::{McaiWorkersConfig, Provider, RepoConfig};
 use clap::ArgMatches;
-use directories::ProjectDirs;
 
 pub fn register<'a>(cfg: &mut McaiWorkersConfig, matches: &ArgMatches<'a>) {
   let repository = matches.value_of("repository").unwrap();
@@ -24,11 +20,5 @@ pub fn register<'a>(cfg: &mut McaiWorkersConfig, matches: &ArgMatches<'a>) {
   }
 
   cfg.repos.push(repo_config);
-  confy::store(PROJECT_NAME, cfg).unwrap();
-
-  let project = ProjectDirs::from("rs", "", "mcai-workers").unwrap();
-  println!(
-    "Stored configuration in folder: {}",
-    project.preference_dir().display()
-  );
+  cfg.store();
 }

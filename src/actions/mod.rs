@@ -3,9 +3,11 @@ mod list;
 mod register;
 mod show;
 mod unregister;
+mod versions;
 
 pub use fetch::fetch;
 pub use list::list;
 pub use register::register;
 pub use show::show;
 pub use unregister::unregister;
+pub use versions::versions;

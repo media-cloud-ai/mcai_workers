@@ -113,9 +113,20 @@ fn main() {
             .takes_value(true),
         ),
     )
+    .subcommand(
+      SubCommand::with_name("versions")
+        .about("Set versions of tools (Rust, Media-Cloud-AI SDK)")
+        .version("0.1")
+        .arg(Arg::with_name("rust").long("rust").takes_value(true))
+        .arg(
+          Arg::with_name("mcai-sdk")
+            .long("mcai-sdk")
+            .takes_value(true),
+        ),
+    )
     .get_matches();
 
-  let mut cfg: config::McaiWorkersConfig = confy::load(PROJECT_NAME).unwrap();
+  let mut cfg = config::McaiWorkersConfig::open();
 
   if let Some(matches) = matches.subcommand_matches("register") {
     actions::register(&mut cfg, matches);
@@ -139,6 +150,11 @@ fn main() {
 
   if let Some(matches) = matches.subcommand_matches("list") {
     actions::list(&cfg, matches);
+    return;
+  }
+
+  if let Some(matches) = matches.subcommand_matches("versions") {
+    actions::versions(&mut cfg, matches);
     return;
   }
 }
