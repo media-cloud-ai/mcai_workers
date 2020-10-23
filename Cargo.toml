@@ -11,18 +11,18 @@ license = "MIT"
 edition = "2018"
 
 [dependencies]
-base64 = "0.12"
+base64 = "0.13"
 cargo_toml = "0.8"
 clap = "2.33"
 colored = "2"
 confy = "0.4"
-console = "0.12"
+console = "0.13"
 directories = "3.0"
-dockerfile-parser = "0.5"
+dockerfile-parser = "0.6"
 github-rs = "0.7"
 gitlab = "0.1304"
 reqwest = {version = "0.10", features = ["json", "native-tls"]}
-semver = {version = "0.9.0", features = ["serde"]}
+semver = {version = "0.11.0", features = ["serde"]}
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
