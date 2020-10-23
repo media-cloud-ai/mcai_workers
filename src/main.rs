@@ -11,6 +11,7 @@ use clap::{App, Arg, SubCommand};
 use dockerfile_parser::Dockerfile;
 
 static PROJECT_NAME: &str = "mcai-workers";
+static OPEN_SOURCE_WORKERS_URL: &str = "https://raw.githubusercontent.com/media-cloud-ai/mcai_workers/master/workers/open_source_mcai_workers.json";
 
 #[derive(Debug)]
 pub struct Repository {
@@ -37,9 +38,9 @@ fn main() {
           Arg::with_name("url")
             .short("u")
             .long("url")
+            .default_value(OPEN_SOURCE_WORKERS_URL)
             .takes_value(true)
-            .multiple(true)
-            .required(true),
+            .multiple(true),
         ),
     )
     .subcommand(

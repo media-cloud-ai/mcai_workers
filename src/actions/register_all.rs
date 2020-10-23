@@ -1,5 +1,6 @@
 use crate::config::{McaiWorkersConfig, Provider, RepoConfig};
 use clap::ArgMatches;
+use reqwest::blocking::Client;
 use semver::Version;
 use std::fs;
 
@@ -47,8 +48,10 @@ pub fn register_all<'a>(cfg: &mut McaiWorkersConfig, matches: &ArgMatches<'a>) {
 
 pub fn fetch_content(url : &str) -> Option<String> {
   if url.starts_with("http://") || url.starts_with("https://") {
-    return None
+    let client = Client::builder().build().unwrap();
+    return client.get(url).send().unwrap().text().ok();
   }
+
   fs::read_to_string(url).ok()
 }
 
