@@ -1,0 +1,77 @@
+{
+	"mcai_sdk_version": "0.11.8",
+	"rust_version": "0.11.8",
+	"workers": [
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/mcai_worker_sdk",
+			"manifests": [
+				"rs_mcai_worker_sdk/Cargo.toml",
+				"py_mcai_worker_sdk/Cargo.toml",
+				"c_mcai_worker_sdk/Cargo.toml"
+			],
+			"dockerfiles": [
+				"py_mcai_worker_sdk/Dockerfile",
+				"py_mcai_worker_sdk/Dockerfile.buster",
+				"py_mcai_worker_sdk/Dockerfile.media",
+				"c_mcai_worker_sdk/Dockerfile"
+			]
+		},
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/rs_command_line_worker",
+			"dockerfiles": [
+				"docker/debian/Dockerfile",
+				"docker/ubuntu/Dockerfile"
+			]
+		},
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/adm_engine"
+		},
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/aws_cli_worker"
+		},
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/py_object_detection_worker"
+		},
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/rs_ffmpeg_worker"
+		},
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/rs_file_system_worker"
+		},
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/rs_json_transform_worker"
+		},
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/rs_manifest_worker"
+		},
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/rs_media_probe_worker"
+		},
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/rs_media_splitter_worker"
+		},
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/rs_text_recognition_worker"
+		},
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/rs_transcript_worker"
+		},
+		{
+			"provider": "github",
+			"name": "media-cloud-ai/rs_transfer_worker"
+		}
+	]
+}

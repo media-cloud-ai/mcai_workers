@@ -13,3 +13,6 @@ cargo install mcai-workers
 Generate a Github token using that documentation: [https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token).
 
 Export the token in your environment under `GITHUB_TOKEN` name and enjoy `mcai-workers` tool.
+
+<!-- List Hub docker tags -->
+<!-- https://hub.docker.com/v2/repositories/mediacloudai/py_mcai_worker_sdk/tags -->

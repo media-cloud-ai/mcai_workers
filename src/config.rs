@@ -14,6 +14,16 @@ impl McaiWorkersConfig {
     confy::load(PROJECT_NAME).unwrap()
   }
 
+  pub fn add_repo(&mut self, repo: RepoConfig) {
+    if let Some(index) = self.repos
+      .iter()
+      .position(|x| x == &repo) {
+        self.repos.remove(index);
+      }
+
+    self.repos.push(repo);
+  }
+
   pub fn store(&self) {
     confy::store(PROJECT_NAME, self).unwrap();
 
@@ -52,9 +62,19 @@ impl RepoConfig {
   }
 }
 
+impl PartialEq for RepoConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && 
+        self.provider == other.provider
+    }
+}
+impl Eq for RepoConfig {}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Provider {
+  #[serde(rename="github")]
   Github,
+  #[serde(rename="gitlab")]
   Gitlab,
 }
 

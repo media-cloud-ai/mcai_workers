@@ -20,8 +20,9 @@ pub fn list<'a>(cfg: &McaiWorkersConfig, matches: &ArgMatches<'a>) {
 
       if let Some(package) = &manifest.package {
         println!(
-          "  {} {} {}{}",
+          "  {} {} {} {}{}",
           Emoji("📙", &"=>".magenta().bold()),
+          "Rust project".yellow(),
           package.name.yellow(),
           "v".yellow(),
           package.version.yellow()
@@ -37,7 +38,7 @@ pub fn list<'a>(cfg: &McaiWorkersConfig, matches: &ArgMatches<'a>) {
               .map(|version| {
                 if !version.matches(&mcai_sdk_version) {
                   Some(format!(
-                    "{} Update required to v{}",
+                    "{} Update required to version {}",
                     Emoji("❗", "=>"),
                     mcai_sdk_version
                   ))
@@ -51,7 +52,7 @@ pub fn list<'a>(cfg: &McaiWorkersConfig, matches: &ArgMatches<'a>) {
           .unwrap_or_default();
 
         println!(
-          "  {} {} {} {}",
+          "    {} {} {} {}",
           Emoji("📦", &"=>".magenta().bold()),
           "MCAI Worker SDK".magenta(),
           version.magenta(),
@@ -118,35 +119,33 @@ fn docker_information(dockerfile: &Dockerfile) -> Option<String> {
     })
     .collect::<Vec<ImageRef>>();
 
-  for image in &images {
-    let reference_images = vec![
-      "rust",
-      "ubuntu",
-      "debian",
-      "mediacloudai/rs_command_line_worker",
-      "mediacloudai/py_mcai_worker_sdk",
-      "mediacloudai/c_mcai_worker_sdk",
-    ];
-
-    if !reference_images.contains(&image.image.as_str()) {
-      continue;
-    }
-
-    let reference_image = match image.image.as_str() {
-      "rust" => "Rust",
-      "ubuntu" => "Ubuntu",
-      "debian" => "Debian",
-      "mediacloudai/rs_command_line_worker" => "Command Line",
-      "mediacloudai/py_mcai_worker_sdk" => "Python MCAI SDK",
-      "mediacloudai/c_mcai_worker_sdk" => "C MCAI SDK",
-      _ => unreachable!(),
-    };
-
-    return Some(format!(
-      "{} {}",
-      reference_image,
-      image.tag.as_ref().unwrap_or(&"latest".to_string())
-    ));
+  if images.is_empty() {
+    return None;
   }
-  None
+
+  let images =
+    images
+      .iter()
+      .map(|image| {
+        let reference_image = match image.image.as_str() {
+          "rust" => "Rust",
+          "ubuntu" => "Ubuntu",
+          "debian" => "Debian",
+          "mediacloudai/rs_command_line_worker" => "Command Line",
+          "mediacloudai/py_mcai_worker_sdk" => "Python MCAI SDK",
+          "mediacloudai/c_mcai_worker_sdk" => "C MCAI SDK",
+          "mediacloudai/docker_alpine_ffmpeg" => "Alpine FFmpeg",
+          image_name => image_name,
+        };
+
+        format!(
+          "{} {}",
+          reference_image,
+          image.tag.as_ref().unwrap_or(&"latest".to_string())
+        )
+      })
+      .collect::<Vec<String>>()
+      .join(" // ");
+  
+  Some(images)
 }

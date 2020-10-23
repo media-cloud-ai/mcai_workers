@@ -19,6 +19,6 @@ pub fn register<'a>(cfg: &mut McaiWorkersConfig, matches: &ArgMatches<'a>) {
     }
   }
 
-  cfg.repos.push(repo_config);
+  cfg.add_repo(repo_config);
   cfg.store();
 }

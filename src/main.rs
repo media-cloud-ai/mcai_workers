@@ -30,6 +30,19 @@ fn main() {
 
   let matches = App::new(PROJECT_NAME)
     .subcommand(
+      SubCommand::with_name("register-all")
+        .about("Register a repositories form a content description")
+        .version("0.1")
+        .arg(
+          Arg::with_name("url")
+            .short("u")
+            .long("url")
+            .takes_value(true)
+            .multiple(true)
+            .required(true),
+        ),
+    )
+    .subcommand(
       SubCommand::with_name("register")
         .about("Register a new repository to list of current workers")
         .version("0.1")
@@ -61,7 +74,7 @@ fn main() {
             .long("dockerfile")
             .takes_value(true)
             .multiple(true),
-        ),
+        )
     )
     .subcommand(
       SubCommand::with_name("unregister")
@@ -130,6 +143,11 @@ fn main() {
 
   if let Some(matches) = matches.subcommand_matches("register") {
     actions::register(&mut cfg, matches);
+    return;
+  }
+
+  if let Some(matches) = matches.subcommand_matches("register-all") {
+    actions::register_all(&mut cfg, matches);
     return;
   }
 
