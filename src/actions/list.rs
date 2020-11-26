@@ -123,29 +123,28 @@ fn docker_information(dockerfile: &Dockerfile) -> Option<String> {
     return None;
   }
 
-  let images =
-    images
-      .iter()
-      .map(|image| {
-        let reference_image = match image.image.as_str() {
-          "rust" => "Rust",
-          "ubuntu" => "Ubuntu",
-          "debian" => "Debian",
-          "mediacloudai/rs_command_line_worker" => "Command Line",
-          "mediacloudai/py_mcai_worker_sdk" => "Python MCAI SDK",
-          "mediacloudai/c_mcai_worker_sdk" => "C MCAI SDK",
-          "mediacloudai/docker_alpine_ffmpeg" => "Alpine FFmpeg",
-          image_name => image_name,
-        };
+  let images = images
+    .iter()
+    .map(|image| {
+      let reference_image = match image.image.as_str() {
+        "rust" => "Rust",
+        "ubuntu" => "Ubuntu",
+        "debian" => "Debian",
+        "mediacloudai/rs_command_line_worker" => "Command Line",
+        "mediacloudai/py_mcai_worker_sdk" => "Python MCAI SDK",
+        "mediacloudai/c_mcai_worker_sdk" => "C MCAI SDK",
+        "mediacloudai/docker_alpine_ffmpeg" => "Alpine FFmpeg",
+        image_name => image_name,
+      };
 
-        format!(
-          "{} {}",
-          reference_image,
-          image.tag.as_ref().unwrap_or(&"latest".to_string())
-        )
-      })
-      .collect::<Vec<String>>()
-      .join(" // ");
-  
+      format!(
+        "{} {}",
+        reference_image,
+        image.tag.as_ref().unwrap_or(&"latest".to_string())
+      )
+    })
+    .collect::<Vec<String>>()
+    .join(" // ");
+
   Some(images)
 }

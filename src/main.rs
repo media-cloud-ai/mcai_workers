@@ -75,7 +75,7 @@ fn main() {
             .long("dockerfile")
             .takes_value(true)
             .multiple(true),
-        )
+        ),
     )
     .subcommand(
       SubCommand::with_name("unregister")
