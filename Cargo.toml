@@ -27,7 +27,7 @@ github-rs = "0.7"
 gitlab = "0.1304"
 lapin = "1.1.0"
 log = "0.4.5"
-mcai_worker_sdk = { version = "0.11.10", path = "../mcai_worker_sdk/rs_mcai_worker_sdk" }
+mcai_worker_sdk = "0.11.10"
 regex = "1.4.2"
 reqwest = {version = "0.10", features = ["json", "native-tls"]}
 semver = {version = "0.11.0", features = ["serde"]}

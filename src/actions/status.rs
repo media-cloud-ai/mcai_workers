@@ -4,7 +4,7 @@ use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::Duration;
 
-use clap::ArgMatches;
+use clap::{Arg, ArgMatches};
 use futures_util::stream::StreamExt;
 use lapin::options::BasicAckOptions;
 use lapin::publisher_confirm::PublisherConfirm;
@@ -25,22 +25,73 @@ use mcai_worker_sdk::{
 const DIRECT_MESSAGING: &str = "direct_messaging";
 const DIRECT_MESSAGING_RESPONSE: &str = "direct_messaging_response";
 
+pub fn get_command_args() -> [Arg<'static, 'static>; 7] {
+  [
+    Arg::with_name("host")
+      .short("h")
+      .long("host")
+      .takes_value(true)
+      .default_value("localhost"),
+    Arg::with_name("port")
+      .short("p")
+      .long("port")
+      .takes_value(true)
+      .default_value("5672"),
+    Arg::with_name("virtual_host")
+      .short("vh")
+      .long("vhost")
+      .takes_value(true)
+      .default_value(""),
+    Arg::with_name("user")
+      .short("u")
+      .long("user")
+      .takes_value(true)
+      .default_value("guest"),
+    Arg::with_name("password")
+      .short("P")
+      .long("password")
+      .takes_value(true)
+      .default_value("guest"),
+    Arg::with_name("tls").long("tls"),
+    Arg::with_name("worker_id")
+      .short("w")
+      .long("worker-id")
+      .takes_value(true),
+  ]
+}
+
 pub fn status(matches: &ArgMatches) {
-  if let Some(server_url) = matches.value_of("url") {
-    if let Err(error) = watch(server_url, matches.value_of("worker_id"), 1000, true) {
-      error!("{}", error);
+  match get_amqp_server_url(matches) {
+    Ok(server_url) => {
+      if let Err(error) = get_worker_status(&server_url, matches.value_of("worker_id"), 1000, false)
+      {
+        error!("{}", error);
+      }
     }
-  } else {
-    error!("Unspecified RabbitMQ server url.");
+    Err(error) => error!("Invalid RabbitMQ server URL: {}", error),
   }
 }
 
-pub fn watch(
+pub fn watch(matches: &ArgMatches) {
+  match get_amqp_server_url(matches) {
+    Ok(server_url) => {
+      if let Err(error) = get_worker_status(&server_url, matches.value_of("worker_id"), 1000, true)
+      {
+        error!("{}", error);
+      }
+    }
+    Err(error) => error!("Invalid RabbitMQ server URL: {}", error),
+  }
+}
+
+pub fn get_worker_status(
   server_url: &str,
   worker_id: Option<&str>,
   interval_ms: u64,
-  once: bool,
+  keep_watching: bool,
 ) -> Result<(), String> {
+  debug!("Try to connect to {}", server_url);
+
   let amqp_uri = AMQPUri::from_str(server_url)?;
 
   let (tx, rx) = mpsc::channel();
@@ -76,7 +127,7 @@ pub fn watch(
 
     std::thread::sleep(Duration::from_millis(interval_ms));
 
-    if once {
+    if !keep_watching {
       // Stop consuming thread;
       tx.send(()).map_err(|e| e.to_string())?;
       break;
@@ -84,6 +135,27 @@ pub fn watch(
   }
 
   Ok(())
+}
+
+fn get_amqp_server_url(matches: &ArgMatches) -> Result<String, String> {
+  let scheme = if matches.is_present("tls") {
+    "amqps"
+  } else {
+    "amqp"
+  };
+
+  let host = matches.value_of("host").unwrap();
+  let port = matches.value_of("port").unwrap();
+  let user = matches.value_of("user").unwrap();
+  let password = matches.value_of("password").unwrap();
+  let virtual_host = matches.value_of("virtual_host").unwrap();
+
+  let server_url = format!(
+    "{}://{}:{}@{}:{}/{}",
+    scheme, user, password, host, port, virtual_host
+  );
+
+  Ok(server_url)
 }
 
 fn declare_consumed_queue(channel: &Channel) {

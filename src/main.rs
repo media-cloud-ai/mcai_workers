@@ -152,19 +152,13 @@ fn main() {
       SubCommand::with_name("status")
         .about("List workers status.")
         .version("0.1")
-        .arg(
-          Arg::with_name("url")
-            .short("u")
-            .long("url")
-            .takes_value(true)
-            .required(true),
-        )
-        .arg(
-          Arg::with_name("worker_id")
-            .short("w")
-            .long("worker-id")
-            .takes_value(true),
-        ),
+        .args(&actions::status::get_command_args()),
+    )
+    .subcommand(
+      SubCommand::with_name("watch")
+        .about("Watch workers status.")
+        .version("0.1")
+        .args(&actions::status::get_command_args()),
     )
     .get_matches();
 
@@ -223,6 +217,11 @@ fn main() {
 
   if let Some(matches) = matches.subcommand_matches("status") {
     actions::status(matches);
+    return;
+  }
+
+  if let Some(matches) = matches.subcommand_matches("watch") {
+    actions::watch(matches);
     return;
   }
 }
