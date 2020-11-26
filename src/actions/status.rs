@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::mpsc;
-use std::sync::mpsc::TryRecvError;
+use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::Duration;
 
 use clap::ArgMatches;
 use futures_util::stream::StreamExt;
 use lapin::options::BasicAckOptions;
+use lapin::publisher_confirm::PublisherConfirm;
 use lapin::{
   options::{BasicConsumeOptions, BasicPublishOptions},
   types::{AMQPValue, FieldTable},
@@ -18,6 +19,7 @@ use mcai_worker_sdk::{
   channels::{BindDescription, QueueDescription},
   debug, error,
   worker::system_information::SystemInformation,
+  Channel,
 };
 
 const DIRECT_MESSAGING: &str = "direct_messaging";
@@ -52,6 +54,39 @@ pub fn watch(
 
   let channel = conn.create_channel().wait().map_err(|e| e.to_string())?;
 
+  declare_consumed_queue(&channel);
+
+  let cloned_channel = channel.clone();
+
+  debug!("Start worker status consumer...");
+
+  std::thread::spawn(move || {
+    if let Err(error) = start_consumer(&cloned_channel, rx) {
+      error!("{}", error);
+    }
+  });
+
+  debug!("Start requesting worker status...");
+
+  let headers = get_request_headers(worker_id);
+
+  loop {
+    let result = send_status_request(&channel, headers.clone());
+    debug!("Published status message: {:?}", result);
+
+    std::thread::sleep(Duration::from_millis(interval_ms));
+
+    if once {
+      // Stop consuming thread;
+      tx.send(()).map_err(|e| e.to_string())?;
+      break;
+    }
+  }
+
+  Ok(())
+}
+
+fn declare_consumed_queue(channel: &Channel) {
   let direct_messaging_response_queue = QueueDescription {
     name: DIRECT_MESSAGING_RESPONSE.to_string(),
     durable: true,
@@ -70,54 +105,24 @@ pub fn watch(
     headers: HashMap::new(),
   };
   direct_messaging_response_bind.declare(&channel);
+}
 
-  let cloned_channel = channel.clone();
+fn send_status_request(channel: &Channel, headers: FieldTable) -> Result<PublisherConfirm, String> {
+  let status_message = serde_json::to_string(&DirectMessage::Status).map_err(|e| e.to_string())?;
 
-  std::thread::spawn(move || {
-    let mut status_consumer = match cloned_channel
-      .basic_consume(
-        DIRECT_MESSAGING_RESPONSE,
-        "mcai_worker_status_consumer",
-        BasicConsumeOptions::default(),
-        FieldTable::default(),
-      )
-      .wait()
-    {
-      Ok(consumer) => consumer,
-      Err(error) => {
-        error!("Could not start consuming: {}", error.to_string());
-        return;
-      }
-    };
+  channel
+    .basic_publish(
+      DIRECT_MESSAGING,
+      "mcai_worker_status",
+      BasicPublishOptions::default(),
+      status_message.as_bytes().to_vec(),
+      BasicProperties::default().with_headers(headers),
+    )
+    .wait()
+    .map_err(|e| e.to_string())
+}
 
-    while let Some(delivery) = futures_executor::block_on(status_consumer.next()) {
-      if let Ok((channel, delivery)) = delivery {
-        let message_data = std::str::from_utf8(&delivery.data).unwrap();
-        debug!("Consumed message: {:?}", message_data);
-
-        match serde_json::from_str::<SystemInformation>(message_data) {
-          Ok(sys_info) => println!("{:?}", sys_info),
-          Err(error) => error!("Could not handle worker status: {}", error.to_string()),
-        }
-
-        if let Err(error) = channel
-          .basic_ack(delivery.delivery_tag, BasicAckOptions::default())
-          .wait()
-        {
-          error!("Could not ack message: {}", error.to_string())
-        }
-      }
-
-      match rx.try_recv() {
-        Ok(_) | Err(TryRecvError::Disconnected) => {
-          debug!("Stop consuming.");
-          break;
-        }
-        Err(TryRecvError::Empty) => {}
-      }
-    }
-  });
-
+fn get_request_headers(worker_id: Option<&str>) -> FieldTable {
   let mut headers = FieldTable::default();
   if let Some(worker) = worker_id {
     headers.insert(
@@ -127,43 +132,50 @@ pub fn watch(
   } else {
     headers.insert("broadcast".into(), AMQPValue::Boolean(true));
   }
+  headers
+}
 
-  debug!("Start requesting worker status...");
+fn stop_consumer(rx: &Receiver<()>) -> bool {
+  match rx.try_recv() {
+    Ok(_) | Err(TryRecvError::Disconnected) => {
+      return true;
+    }
+    Err(TryRecvError::Empty) => {}
+  }
+  false
+}
 
-  loop {
-    let status_message =
-      serde_json::to_string(&DirectMessage::Status).map_err(|e| e.to_string())?;
+fn start_consumer(channel: &Channel, rx: Receiver<()>) -> Result<(), String> {
+  let mut status_consumer = channel
+    .basic_consume(
+      DIRECT_MESSAGING_RESPONSE,
+      "mcai_worker_status_consumer",
+      BasicConsumeOptions::default(),
+      FieldTable::default(),
+    )
+    .wait()
+    .map_err(|e| format!("Could not start consuming: {}", e.to_string()))?;
 
-    let result = channel
-      .basic_publish(
-        DIRECT_MESSAGING,
-        "mcai_worker_status",
-        BasicPublishOptions::default(),
-        status_message.as_bytes().to_vec(),
-        BasicProperties::default().with_headers(headers.clone()),
-      )
-      .wait()
-      .map_err(|e| e.to_string())?;
+  while let Some(delivery) = futures_executor::block_on(status_consumer.next()) {
+    if let Ok((channel, delivery)) = delivery {
+      let message_data = std::str::from_utf8(&delivery.data).map_err(|e| e.to_string())?;
+      debug!("Consumed message: {:?}", message_data);
 
-    debug!("Published message {:?}: {:?}", status_message, result);
+      let sys_info: SystemInformation = serde_json::from_str(message_data)
+        .map_err(|e| format!("Could not handle worker status: {}", e.to_string()))?;
+      println!("{:?}", sys_info);
 
-    std::thread::sleep(Duration::from_millis(interval_ms));
+      channel
+        .basic_ack(delivery.delivery_tag, BasicAckOptions::default())
+        .wait()
+        .map_err(|e| format!("Could not ack message: {}", e.to_string()))?;
+    }
 
-    if once {
-      // Stop consuming thread;
-      tx.send(()).map_err(|e| e.to_string())?;
+    if stop_consumer(&rx) {
+      debug!("Stop consuming.");
       break;
     }
   }
 
   Ok(())
-}
-
-#[test]
-pub fn test_status() {
-  watch(
-    "amqp://mediacloudai:mediacloudai@localhost:5678/media_cloud_ai_dev",
-    None,
-    true,
-  );
 }
