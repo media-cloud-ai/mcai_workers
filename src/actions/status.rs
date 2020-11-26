@@ -1,10 +1,14 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::io::{stdout, Write};
+use std::process::exit;
 use std::str::FromStr;
-use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, TryRecvError};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
 use clap::{Arg, ArgMatches};
+use crossterm::terminal::{Clear, ClearType};
+use crossterm::{cursor, QueueableCommand};
 use futures_util::stream::StreamExt;
 use lapin::options::BasicAckOptions;
 use lapin::publisher_confirm::PublisherConfirm;
@@ -73,10 +77,22 @@ pub fn status(matches: &ArgMatches) {
 }
 
 pub fn watch(matches: &ArgMatches) {
+  let interval_ms = match u64::from_str(matches.value_of("interval").unwrap()) {
+    Ok(interval) => interval,
+    Err(error) => {
+      error!("Invalid interval value: {}", error.to_string());
+      exit(-1);
+    }
+  };
+
   match get_amqp_server_url(matches) {
     Ok(server_url) => {
-      if let Err(error) = get_worker_status(&server_url, matches.value_of("worker_id"), 1000, true)
-      {
+      if let Err(error) = get_worker_status(
+        &server_url,
+        matches.value_of("worker_id"),
+        interval_ms,
+        true,
+      ) {
         error!("{}", error);
       }
     }
@@ -109,10 +125,13 @@ pub fn get_worker_status(
 
   let cloned_channel = channel.clone();
 
+  let worker_statuses = Arc::new(Mutex::new(BTreeMap::<String, SystemInformation>::new()));
+
   debug!("Start worker status consumer...");
 
+  let cloned_worker_statuses = worker_statuses.clone();
   std::thread::spawn(move || {
-    if let Err(error) = start_consumer(&cloned_channel, rx) {
+    if let Err(error) = start_consumer(&cloned_channel, rx, cloned_worker_statuses) {
       error!("{}", error);
     }
   });
@@ -120,12 +139,26 @@ pub fn get_worker_status(
   debug!("Start requesting worker status...");
 
   let headers = get_request_headers(worker_id);
+  let mut max_displayed_workers = 0;
+
+  println!(
+    " #  {:<36} {:>16} {:>16} {:>16} {:>16} {:>16}",
+    "Worker ID", "Used Memory", "Total Memory", "Used Swap", "Total Swap", "Nb. CPUs"
+  );
 
   loop {
     let result = send_status_request(&channel, headers.clone());
     debug!("Published status message: {:?}", result);
 
     std::thread::sleep(Duration::from_millis(interval_ms));
+
+    print_worker_statuses(
+      worker_statuses.clone(),
+      max_displayed_workers,
+      keep_watching,
+    )?;
+    max_displayed_workers = max_displayed_workers.max(worker_statuses.lock().unwrap().len());
+    worker_statuses.lock().unwrap().clear();
 
     if !keep_watching {
       // Stop consuming thread;
@@ -217,7 +250,11 @@ fn stop_consumer(rx: &Receiver<()>) -> bool {
   false
 }
 
-fn start_consumer(channel: &Channel, rx: Receiver<()>) -> Result<(), String> {
+fn start_consumer(
+  channel: &Channel,
+  rx: Receiver<()>,
+  worker_statuses: Arc<Mutex<BTreeMap<String, SystemInformation>>>,
+) -> Result<(), String> {
   let mut status_consumer = channel
     .basic_consume(
       DIRECT_MESSAGING_RESPONSE,
@@ -235,7 +272,11 @@ fn start_consumer(channel: &Channel, rx: Receiver<()>) -> Result<(), String> {
 
       let sys_info: SystemInformation = serde_json::from_str(message_data)
         .map_err(|e| format!("Could not handle worker status: {}", e.to_string()))?;
-      println!("{:?}", sys_info);
+
+      worker_statuses
+        .lock()
+        .unwrap()
+        .insert(sys_info.docker_container_id.clone(), sys_info);
 
       channel
         .basic_ack(delivery.delivery_tag, BasicAckOptions::default())
@@ -247,6 +288,59 @@ fn start_consumer(channel: &Channel, rx: Receiver<()>) -> Result<(), String> {
       debug!("Stop consuming.");
       break;
     }
+  }
+
+  Ok(())
+}
+
+fn print_worker_statuses(
+  worker_statuses: Arc<Mutex<BTreeMap<String, SystemInformation>>>,
+  max_displayed_workers: usize,
+  keep_watching: bool,
+) -> Result<(), String> {
+  let mut stdout = stdout();
+
+  let worker_statuses = worker_statuses.lock().unwrap();
+  let nb_workers = worker_statuses.len();
+  let nb_displayed_lines = nb_workers.max(max_displayed_workers);
+  let empty_lines = nb_displayed_lines - nb_workers;
+
+  let mut cursor_position = 0;
+  for (worker_index, (worker_id, sys_info)) in worker_statuses.iter().enumerate() {
+    stdout
+      .write(
+        format!(
+          "{:2}. {:<36} {:>16} {:>16} {:>16} {:>16} {:>16}\n",
+          worker_index + 1,
+          worker_id,
+          sys_info.used_memory,
+          sys_info.total_memory,
+          sys_info.used_swap,
+          sys_info.total_swap,
+          sys_info.number_of_processors
+        )
+        .as_bytes(),
+      )
+      .map_err(|e| e.to_string())?;
+    cursor_position += 1;
+  }
+
+  for _l in 0..empty_lines {
+    stdout
+      .queue(Clear(ClearType::CurrentLine))
+      .map_err(|e| e.to_string())?;
+    stdout
+      .queue(cursor::MoveToNextLine(1))
+      .map_err(|e| e.to_string())?;
+    cursor_position += 1;
+  }
+
+  stdout.flush().map_err(|e| e.to_string())?;
+
+  if cursor_position > 0 && keep_watching {
+    stdout
+      .queue(cursor::MoveToPreviousLine(cursor_position as u16))
+      .map_err(|e| e.to_string())?;
   }
 
   Ok(())
