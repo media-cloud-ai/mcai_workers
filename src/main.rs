@@ -2,6 +2,7 @@
 extern crate serde_derive;
 
 mod actions;
+mod amqp;
 mod config;
 mod github;
 mod gitlab;
@@ -152,13 +153,14 @@ fn main() {
       SubCommand::with_name("status")
         .about("List workers status.")
         .version("0.1")
-        .args(&actions::status::get_command_args()),
+        .args(&amqp::get_connection_command_args())
+        .arg(amqp::get_worker_id_argument(false)),
     )
     .subcommand(
       SubCommand::with_name("watch")
         .about("Watch workers status.")
         .version("0.1")
-        .args(&actions::status::get_command_args())
+        .args(&amqp::get_connection_command_args())
         .arg(
           Arg::with_name("interval")
             .short("n")
@@ -166,6 +168,9 @@ fn main() {
             .takes_value(true)
             .help("Watch interval in milliseconds")
             .default_value("5000"),
+        )
+        .arg(amqp::get_worker_id_argument(false)),
+    )
         ),
     )
     .get_matches();
