@@ -76,4 +76,3 @@ pub fn get_request_headers(worker_id: Option<&str>) -> FieldTable {
   }
   headers
 }
-

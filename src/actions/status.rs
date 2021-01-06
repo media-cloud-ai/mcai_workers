@@ -21,11 +21,16 @@ use lapin::{
   uri::AMQPUri,
   BasicProperties, Connection, ConnectionProperties,
 };
-use mcai_worker_sdk::message::control::DirectMessage;
+use mcai_worker_sdk::processor::ProcessStatus;
 use mcai_worker_sdk::{
-  channels::{BindDescription, QueueDescription},
   debug, error,
-  worker::system_information::SystemInformation,
+  message_exchange::{
+    rabbitmq::{
+      channels::{BindDescription, QueueDescription},
+      EXCHANGE_NAME_WORKER_RESPONSE, ROUTING_KEY_WORKER_STATUS,
+    },
+    OrderMessage,
+  },
   Channel,
 };
 
@@ -90,7 +95,7 @@ pub fn get_worker_status(
 
   let cloned_channel = channel.clone();
 
-  let worker_statuses = Arc::new(Mutex::new(BTreeMap::<String, SystemInformation>::new()));
+  let worker_statuses = Arc::new(Mutex::new(BTreeMap::new()));
 
   debug!("Start worker status consumer...");
 
@@ -107,8 +112,15 @@ pub fn get_worker_status(
   let mut max_displayed_workers = 0;
 
   println!(
-    " #  {:<36} {:>16} {:>16} {:>16} {:>16} {:>16}",
-    "Worker ID", "Used Memory", "Total Memory", "Used Swap", "Total Swap", "Nb. CPUs"
+    " #  {:<36} {:>16} {:>16} {:>16} {:>16} {:>16} {:>16} {:>16}",
+    "Worker ID",
+    "Used Memory",
+    "Total Memory",
+    "Used Swap",
+    "Total Swap",
+    "Nb. CPUs",
+    "Activity",
+    "Status"
   );
 
   loop {
@@ -148,16 +160,16 @@ fn declare_consumed_queue(channel: &Channel) {
   direct_messaging_response_queue.declare(&channel);
 
   let direct_messaging_response_bind = BindDescription {
-    exchange: DIRECT_MESSAGING_RESPONSE.to_string(),
+    exchange: EXCHANGE_NAME_WORKER_RESPONSE.to_string(),
     queue: DIRECT_MESSAGING_RESPONSE.to_string(),
-    routing_key: "*".to_string(),
+    routing_key: ROUTING_KEY_WORKER_STATUS.to_string(),
     headers: HashMap::new(),
   };
   direct_messaging_response_bind.declare(&channel);
 }
 
 fn send_status_request(channel: &Channel, headers: FieldTable) -> Result<PublisherConfirm, String> {
-  let status_message = serde_json::to_string(&DirectMessage::Status).map_err(|e| e.to_string())?;
+  let status_message = serde_json::to_string(&OrderMessage::Status).map_err(|e| e.to_string())?;
 
   channel
     .basic_publish(
@@ -184,7 +196,7 @@ fn stop_consumer(rx: &Receiver<()>) -> bool {
 fn start_consumer(
   channel: &Channel,
   rx: Receiver<()>,
-  worker_statuses: Arc<Mutex<BTreeMap<String, SystemInformation>>>,
+  worker_statuses: Arc<Mutex<BTreeMap<String, ProcessStatus>>>,
 ) -> Result<(), String> {
   let mut status_consumer = channel
     .basic_consume(
@@ -201,13 +213,17 @@ fn start_consumer(
       let message_data = std::str::from_utf8(&delivery.data).map_err(|e| e.to_string())?;
       debug!("Consumed message: {:?}", message_data);
 
-      let sys_info: SystemInformation = serde_json::from_str(message_data)
+      let process_status: ProcessStatus = serde_json::from_str(message_data)
         .map_err(|e| format!("Could not handle worker status: {}", e.to_string()))?;
 
-      worker_statuses
-        .lock()
-        .unwrap()
-        .insert(sys_info.docker_container_id.clone(), sys_info);
+      worker_statuses.lock().unwrap().insert(
+        process_status
+          .worker
+          .system_info
+          .docker_container_id
+          .clone(),
+        process_status.clone(),
+      );
 
       channel
         .basic_ack(delivery.delivery_tag, BasicAckOptions::default())
@@ -225,7 +241,7 @@ fn start_consumer(
 }
 
 fn print_worker_statuses(
-  worker_statuses: Arc<Mutex<BTreeMap<String, SystemInformation>>>,
+  worker_statuses: Arc<Mutex<BTreeMap<String, ProcessStatus>>>,
   max_displayed_workers: usize,
   keep_watching: bool,
 ) -> Result<(), String> {
@@ -237,18 +253,37 @@ fn print_worker_statuses(
   let empty_lines = nb_displayed_lines - nb_workers;
 
   let mut cursor_position = 0;
-  for (worker_index, (worker_id, sys_info)) in worker_statuses.iter().enumerate() {
+  for (worker_index, (worker_id, process_status)) in worker_statuses.iter().enumerate() {
+    let used_memory = process_status.worker.system_info.used_memory.to_string();
+    let total_memory = process_status.worker.system_info.total_memory.to_string();
+    let used_swap = process_status.worker.system_info.used_swap.to_string();
+    let total_swap = process_status.worker.system_info.total_swap.to_string();
+    let number_of_processors = process_status
+      .worker
+      .system_info
+      .number_of_processors
+      .to_string();
+    let activity = format!("{:?}", process_status.worker.activity);
+
+    let status = if let Some(job_result) = &process_status.job {
+      serde_json::to_string(job_result.get_status()).unwrap()
+    } else {
+      "-".to_string()
+    };
+
     stdout
       .write(
         format!(
-          "{:2}. {:<36} {:>16} {:>16} {:>16} {:>16} {:>16}\n",
+          "{:2}. {:<36} {:>16} {:>16} {:>16} {:>16} {:>16} {:>16} {:>16}\n",
           worker_index + 1,
           worker_id,
-          sys_info.used_memory,
-          sys_info.total_memory,
-          sys_info.used_swap,
-          sys_info.total_swap,
-          sys_info.number_of_processors
+          used_memory,
+          total_memory,
+          used_swap,
+          total_swap,
+          number_of_processors,
+          activity,
+          status
         )
         .as_bytes(),
       )
