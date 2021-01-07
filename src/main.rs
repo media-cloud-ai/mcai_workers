@@ -152,13 +152,13 @@ fn main() {
       SubCommand::with_name("status")
         .about("List workers status.")
         .version("0.1")
-        .args(&actions::status::get_command_args())
+        .args(&actions::status::get_command_arguments())
     )
     .subcommand(
       SubCommand::with_name("watch")
         .about("Watch workers status.")
         .version("0.1")
-        .args(&actions::status::get_command_args())
+        .args(&actions::status::get_command_arguments())
         .arg(
           Arg::with_name("interval")
             .short("n")
