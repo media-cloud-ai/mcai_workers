@@ -10,6 +10,10 @@ use cargo_toml::Manifest;
 use clap::{App, Arg, SubCommand};
 use dockerfile_parser::Dockerfile;
 
+use env_logger::Builder;
+use log::LevelFilter;
+use std::io::Write;
+
 static PROJECT_NAME: &str = "mcai-workers";
 static OPEN_SOURCE_WORKERS_URL: &str = "https://raw.githubusercontent.com/media-cloud-ai/mcai_workers/master/workers/open_source_mcai_workers.json";
 
@@ -30,6 +34,12 @@ fn main() {
     .env("GITLAB_TOKEN");
 
   let matches = App::new(PROJECT_NAME)
+    .arg(
+      Arg::with_name("verbose")
+        .help("Enable debug logging.")
+        .short("v")
+        .long("verbose"),
+    )
     .subcommand(
       SubCommand::with_name("register-all")
         .about("Register a repositories form a content description")
@@ -138,9 +148,45 @@ fn main() {
             .takes_value(true),
         ),
     )
+    .subcommand(
+      SubCommand::with_name("status")
+        .about("List workers status.")
+        .version("0.1")
+        .args(&actions::status::get_command_arguments())
+    )
+    .subcommand(
+      SubCommand::with_name("watch")
+        .about("Watch workers status.")
+        .version("0.1")
+        .args(&actions::status::get_command_arguments())
+        .arg(
+          Arg::with_name("interval")
+            .short("n")
+            .long("interval")
+            .takes_value(true)
+            .help("Watch interval in milliseconds")
+            .default_value("5000"),
+        )
+    )
     .get_matches();
 
   let mut cfg = config::McaiWorkersConfig::open();
+
+  // Logger
+
+  let log_level = if matches.is_present("verbose") {
+    LevelFilter::Debug
+  } else {
+    LevelFilter::Error
+  };
+
+  let mut builder = Builder::from_default_env();
+  builder
+    .format(move |stream, record| writeln!(stream, "[{}] {}", record.level(), record.args(),))
+    .filter_level(log_level)
+    .init();
+
+  // Sub-commands
 
   if let Some(matches) = matches.subcommand_matches("register") {
     actions::register(&mut cfg, matches);
@@ -174,6 +220,16 @@ fn main() {
 
   if let Some(matches) = matches.subcommand_matches("versions") {
     actions::versions(&mut cfg, matches);
+    return;
+  }
+
+  if let Some(matches) = matches.subcommand_matches("status") {
+    actions::status(matches);
+    return;
+  }
+
+  if let Some(matches) = matches.subcommand_matches("watch") {
+    actions::watch(matches);
     return;
   }
 }
