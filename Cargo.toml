@@ -11,6 +11,7 @@ license = "MIT"
 edition = "2018"
 
 [dependencies]
+amq-protocol-uri = "6.0"
 async-global-executor = "1.4.3"
 base64 = "0.13"
 cargo_toml = "0.8"
@@ -28,7 +29,7 @@ github-rs = "0.7"
 gitlab = "0.1304"
 lapin = "1.1.0"
 log = "0.4.5"
-mcai_worker_sdk = "0.11.10"
+mcai_worker_sdk = { version = "0.11.10", path = "../mcai_worker_sdk/rs_mcai_worker_sdk" }
 regex = "1.4.2"
 reqwest = {version = "0.10", features = ["json", "native-tls"]}
 semver = {version = "0.11.0", features = ["serde"]}

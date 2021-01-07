@@ -1,15 +1,6 @@
-use std::collections::{BTreeMap, HashMap};
-use std::io::{stdout, Write};
-use std::process::exit;
-use std::str::FromStr;
-use std::sync::mpsc::{Receiver, TryRecvError};
-use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
 
-use crate::amqp::{
-  get_amqp_server_url, get_request_headers, DIRECT_MESSAGING, DIRECT_MESSAGING_RESPONSE,
-};
-use clap::ArgMatches;
+use amq_protocol_uri::{AMQPAuthority, AMQPUserInfo};
+use clap::{Arg, ArgMatches};
 use crossterm::terminal::{Clear, ClearType};
 use crossterm::{cursor, QueueableCommand};
 use futures_util::stream::StreamExt;
@@ -17,27 +8,91 @@ use lapin::options::BasicAckOptions;
 use lapin::publisher_confirm::PublisherConfirm;
 use lapin::{
   options::{BasicConsumeOptions, BasicPublishOptions},
-  types::FieldTable,
-  uri::AMQPUri,
-  BasicProperties, Connection, ConnectionProperties,
+  types::{AMQPValue, FieldTable},
+  uri::{AMQPScheme, AMQPUri},
+  BasicProperties, Connection, ConnectionProperties, ExchangeKind,
 };
-use mcai_worker_sdk::processor::ProcessStatus;
 use mcai_worker_sdk::{
   debug, error,
   message_exchange::{
     rabbitmq::{
-      channels::{BindDescription, QueueDescription},
-      EXCHANGE_NAME_WORKER_RESPONSE, ROUTING_KEY_WORKER_STATUS,
+      channels::{BindDescription, ExchangeDescription, QueueDescription},
+      EXCHANGE_NAME_DIRECT_MESSAGING,
+      EXCHANGE_NAME_WORKER_RESPONSE,
+      QUEUE_WORKER_CREATED,
+      QUEUE_WORKER_INITIALIZED,
+      QUEUE_WORKER_STARTED,
+      QUEUE_WORKER_STATUS,
+      QUEUE_WORKER_TERMINATED,
+      QUEUE_WORKER_UPDATED,
+      WORKER_RESPONSE_NOT_FOUND,
     },
     OrderMessage,
   },
+  processor::ProcessStatus,
   Channel,
 };
+use std::collections::{BTreeMap, HashMap};
+use std::io::{stdout, Write};
+use std::process::exit;
+use std::str::FromStr;
+use std::sync::{
+  mpsc::{self, Receiver, TryRecvError},
+  Arc, Mutex,
+};
+use std::time::Duration;
+
+pub fn get_request_headers(worker_id: Option<&str>) -> FieldTable {
+  let mut headers = FieldTable::default();
+  if let Some(worker) = worker_id {
+    headers.insert(
+      "worker_name".into(),
+      AMQPValue::LongString(worker.to_string().into()),
+    );
+  } else {
+    headers.insert("broadcast".into(), AMQPValue::Boolean(true));
+  }
+  headers
+}
+
+pub fn get_command_args() -> Vec<Arg<'static, 'static>> {
+  vec![
+    Arg::with_name("host")
+      .short("h")
+      .long("host")
+      .takes_value(true)
+      .default_value("127.0.0.1"),
+    Arg::with_name("port")
+      .short("p")
+      .long("port")
+      .takes_value(true)
+      .default_value("5672"),
+    Arg::with_name("virtual_host")
+      .long("virtual-host")
+      .takes_value(true)
+      .default_value(""),
+    Arg::with_name("user")
+      .short("u")
+      .long("user")
+      .takes_value(true)
+      .default_value("guest"),
+    Arg::with_name("password")
+      .short("P")
+      .long("password")
+      .takes_value(true)
+      .default_value("guest"),
+    Arg::with_name("tls").long("tls"),
+    Arg::with_name("worker_id")
+      .short("w")
+      .long("worker-id")
+      .takes_value(true),
+  ]
+}
 
 pub fn status(matches: &ArgMatches) {
-  match get_amqp_server_url(matches) {
-    Ok(server_url) => {
-      if let Err(error) = get_worker_status(&server_url, matches.value_of("worker_id"), 1000, false)
+  match get_amqp_server_uri(matches) {
+    Ok(ampq_uri) => {
+      if let Err(error) = get_worker_status(ampq_uri, matches.value_of("worker_id"), 1000, false)
       {
         error!("{}", error);
       }
@@ -55,10 +110,10 @@ pub fn watch(matches: &ArgMatches) {
     }
   };
 
-  match get_amqp_server_url(matches) {
-    Ok(server_url) => {
+  match get_amqp_server_uri(matches) {
+    Ok(ampq_uri) => {
       if let Err(error) = get_worker_status(
-        &server_url,
+        ampq_uri,
         matches.value_of("worker_id"),
         interval_ms,
         true,
@@ -71,16 +126,12 @@ pub fn watch(matches: &ArgMatches) {
 }
 
 pub fn get_worker_status(
-  server_url: &str,
+  amqp_uri: AMQPUri,
   worker_id: Option<&str>,
   interval_ms: u64,
   keep_watching: bool,
 ) -> Result<(), String> {
-  debug!("Try to connect to {}", server_url);
-
-  let amqp_uri = AMQPUri::from_str(server_url)?;
-
-  let (tx, rx) = mpsc::channel();
+  let (sender, receiver) = mpsc::channel();
 
   let conn = Connection::connect_uri(
     amqp_uri,
@@ -91,7 +142,7 @@ pub fn get_worker_status(
 
   let channel = conn.create_channel().wait().map_err(|e| e.to_string())?;
 
-  declare_consumed_queue(&channel);
+  declare_consumed_queues(&channel);
 
   let cloned_channel = channel.clone();
 
@@ -101,7 +152,7 @@ pub fn get_worker_status(
 
   let cloned_worker_statuses = worker_statuses.clone();
   std::thread::spawn(move || {
-    if let Err(error) = start_consumer(&cloned_channel, rx, cloned_worker_statuses) {
+    if let Err(error) = start_consumer(&cloned_channel, receiver, cloned_worker_statuses) {
       error!("{}", error);
     }
   });
@@ -112,7 +163,8 @@ pub fn get_worker_status(
   let mut max_displayed_workers = 0;
 
   println!(
-    " #  {:<36} {:>16} {:>16} {:>16} {:>16} {:>16} {:>16} {:>16}",
+    "{:2} {:<36} {:>16} {:>16} {:>16} {:>16} {:>16} {:>16} {:>16}",
+    " #",
     "Worker ID",
     "Used Memory",
     "Total Memory",
@@ -139,7 +191,7 @@ pub fn get_worker_status(
 
     if !keep_watching {
       // Stop consuming thread;
-      tx.send(()).map_err(|e| e.to_string())?;
+      sender.send(()).map_err(|e| e.to_string())?;
       break;
     }
   }
@@ -147,25 +199,69 @@ pub fn get_worker_status(
   Ok(())
 }
 
-fn declare_consumed_queue(channel: &Channel) {
-  let direct_messaging_response_queue = QueueDescription {
-    name: DIRECT_MESSAGING_RESPONSE.to_string(),
-    durable: true,
-    auto_delete: false,
-    dead_letter_exchange: None,
-    dead_letter_routing_key: None,
-    max_priority: None,
-    message_ttl: None,
+fn get_amqp_server_uri(matches: &ArgMatches) -> Result<AMQPUri, String> {
+  let scheme = if matches.is_present("tls") {
+    AMQPScheme::AMQPS
+  } else {
+    AMQPScheme::AMQP
   };
-  direct_messaging_response_queue.declare(&channel);
 
-  let direct_messaging_response_bind = BindDescription {
+  let amqp_hostname = matches.value_of("host").unwrap();
+  let amqp_port = matches.value_of("port").unwrap();
+  let amqp_username = matches.value_of("user").unwrap();
+  let amqp_password = matches.value_of("password").unwrap();
+  let amqp_vhost = matches.value_of("virtual_host").unwrap();
+  let amqp_vhost = format!("/{}", amqp_vhost);
+
+  log::info!("Start connection with configuration:");
+  log::info!("AMQP TLS: {:?}", scheme);
+  log::info!("AMQP HOSTNAME: {}", amqp_hostname);
+  log::info!("AMQP PORT: {}", amqp_port);
+  log::info!("AMQP USERNAME: {}", amqp_username);
+  log::info!("AMQP VIRTUAL HOST: {}", amqp_vhost);
+
+  Ok(AMQPUri {
+    scheme,
+    authority: AMQPAuthority {
+      userinfo: AMQPUserInfo {
+        username: amqp_username.to_string(),
+        password: amqp_password.to_string(),
+      },
+      host: amqp_hostname.to_string(),
+      port: amqp_port.parse::<u16>().unwrap(),
+    },
+    vhost: amqp_vhost,
+    query: Default::default(),
+  })
+}
+
+fn declare_consumed_queues(channel: &Channel) {
+  ExchangeDescription::new(EXCHANGE_NAME_WORKER_RESPONSE, ExchangeKind::Topic)
+    .with_alternate_exchange(WORKER_RESPONSE_NOT_FOUND)
+    .declare(channel);
+
+  declare_queue(channel, QUEUE_WORKER_CREATED);
+  declare_queue(channel, QUEUE_WORKER_INITIALIZED);
+  declare_queue(channel, QUEUE_WORKER_STARTED);
+  declare_queue(channel, QUEUE_WORKER_STATUS);
+  declare_queue(channel, QUEUE_WORKER_TERMINATED);
+  declare_queue(channel, QUEUE_WORKER_UPDATED);
+}
+
+fn declare_queue(channel: &Channel, queue: &str) {
+  QueueDescription {
+    name: queue.to_string(),
+    durable: true,
+    .. Default::default()
+  }.declare(&channel);
+
+  BindDescription {
     exchange: EXCHANGE_NAME_WORKER_RESPONSE.to_string(),
-    queue: DIRECT_MESSAGING_RESPONSE.to_string(),
-    routing_key: ROUTING_KEY_WORKER_STATUS.to_string(),
+    queue: queue.to_string(),
+    routing_key: queue.to_string(),
     headers: HashMap::new(),
-  };
-  direct_messaging_response_bind.declare(&channel);
+  }.declare(&channel);
+
 }
 
 fn send_status_request(channel: &Channel, headers: FieldTable) -> Result<PublisherConfirm, String> {
@@ -173,8 +269,8 @@ fn send_status_request(channel: &Channel, headers: FieldTable) -> Result<Publish
 
   channel
     .basic_publish(
-      DIRECT_MESSAGING,
-      "mcai_worker_status",
+      EXCHANGE_NAME_DIRECT_MESSAGING,
+      "mcai_workers_status",
       BasicPublishOptions::default(),
       status_message.as_bytes().to_vec(),
       BasicProperties::default().with_headers(headers),
@@ -200,8 +296,8 @@ fn start_consumer(
 ) -> Result<(), String> {
   let mut status_consumer = channel
     .basic_consume(
-      DIRECT_MESSAGING_RESPONSE,
-      "mcai_worker_status_consumer",
+      QUEUE_WORKER_STATUS,
+      "mcai_workers_status_consumer",
       BasicConsumeOptions::default(),
       FieldTable::default(),
     )
@@ -266,7 +362,8 @@ fn print_worker_statuses(
     let activity = format!("{:?}", process_status.worker.activity);
 
     let status = if let Some(job_result) = &process_status.job {
-      serde_json::to_string(job_result.get_status()).unwrap()
+      // serde_json::to_string(job_result.get_status()).unwrap()
+      job_result.get_status().to_string()
     } else {
       "-".to_string()
     };
@@ -274,7 +371,7 @@ fn print_worker_statuses(
     stdout
       .write(
         format!(
-          "{:2}. {:<36} {:>16} {:>16} {:>16} {:>16} {:>16} {:>16} {:>16}\n",
+          "{:2} {:<36} {:>16} {:>16} {:>16} {:>16} {:>16} {:>16} {:>16}\n",
           worker_index + 1,
           worker_id,
           used_memory,
@@ -283,7 +380,7 @@ fn print_worker_statuses(
           total_swap,
           number_of_processors,
           activity,
-          status
+          status.as_str()
         )
         .as_bytes(),
       )
