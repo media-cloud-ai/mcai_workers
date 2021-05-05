@@ -3,6 +3,7 @@ extern crate serde_derive;
 
 mod actions;
 mod config;
+mod dockerhub;
 mod github;
 mod gitlab;
 
@@ -31,6 +32,64 @@ fn main() {
 
   let matches = App::new(PROJECT_NAME)
     .subcommand(
+      SubCommand::with_name("benchmark")
+        .about("Benchmark a video using the docker image of it.")
+        .version("0.1")
+        .arg(
+          Arg::with_name("worker")
+            .index(1)
+            .takes_value(true)
+            .required(true),
+        )
+        .arg(
+          Arg::with_name("example")
+            .index(2)
+            .takes_value(true)
+            .required(true),
+        )
+        .arg(
+          Arg::with_name("cpus")
+            .default_value("1")
+            .short("c")
+            .long("cpus")
+            .takes_value(true),
+        )
+        .arg(
+          Arg::with_name("envs")
+            .help("Json of envs representing files to mount on container (e.g. {'SOURCE_PATH': '/path'})")
+            .default_value("{}")
+            .short("e")
+            .long("envs")
+            .takes_value(true)
+            .validator(valid_json),
+        )
+        .arg(
+          Arg::with_name("memory")
+            .default_value("5000000000")
+            .short("m")
+            .long("memory")
+            .takes_value(true),
+        )
+        .arg(
+          Arg::with_name("nepoch")
+            .help("Number of epoch to benchmark the worker.")
+            .default_value("1")
+            .short("n")
+            .long("nepoch")
+            .takes_value(true),
+        )
+        .arg(
+          Arg::with_name("tag")
+            .default_value("latest")
+            .short("t")
+            .long("tag")
+            .takes_value(true)
+            .multiple(true),
+        )
+        .arg(github_token_arg.clone())
+        .arg(gitlab_token_arg.clone()),
+    )
+    .subcommand(
       SubCommand::with_name("register-all")
         .about("Register a repositories form a content description")
         .version("0.1")
@@ -48,6 +107,13 @@ fn main() {
         .about("Register a new repository to list of current workers")
         .version("0.1")
         .arg(
+          Arg::with_name("image")
+            .short("i")
+            .long("image")
+            .takes_value(true)
+            .required(true),
+        )
+        .arg(
           Arg::with_name("repository")
             .short("r")
             .long("repository")
@@ -60,6 +126,13 @@ fn main() {
             .long("provider")
             .takes_value(true)
             .possible_values(&["github", "gitlab"])
+            .required(true),
+        )
+        .arg(
+          Arg::with_name("registry")
+            .long("registry")
+            .takes_value(true)
+            .possible_values(&["dockerhub", "gitlab"])
             .required(true),
         )
         .arg(
@@ -142,6 +215,11 @@ fn main() {
 
   let mut cfg = config::McaiWorkersConfig::open();
 
+  if let Some(matches) = matches.subcommand_matches("benchmark") {
+    actions::benchmark(&mut cfg, matches);
+    return;
+  }
+
   if let Some(matches) = matches.subcommand_matches("register") {
     actions::register(&mut cfg, matches);
     return;
@@ -175,5 +253,12 @@ fn main() {
   if let Some(matches) = matches.subcommand_matches("versions") {
     actions::versions(&mut cfg, matches);
     return;
+  }
+}
+
+fn valid_json(envs: String) -> Result<(), String> {
+  match serde_json::from_str::<std::collections::HashMap<String, String>>(envs.as_str()) {
+    Ok(_) => Ok(()),
+    Err(error) => Err(format!("{}", error)),
   }
 }

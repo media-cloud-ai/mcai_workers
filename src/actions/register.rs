@@ -1,11 +1,13 @@
-use crate::config::{McaiWorkersConfig, Provider, RepoConfig};
+use crate::config::{McaiWorkersConfig, Provider, Registry, RepoConfig};
 use clap::ArgMatches;
 
 pub fn register<'a>(cfg: &mut McaiWorkersConfig, matches: &ArgMatches<'a>) {
   let repository = matches.value_of("repository").unwrap();
+  let image = matches.value_of("image").unwrap();
   let provider: Provider = matches.value_of("provider").unwrap().into();
+  let registry: Registry = matches.value_of("registry").unwrap().into();
 
-  let mut repo_config = RepoConfig::new(provider, repository);
+  let mut repo_config = RepoConfig::new(provider, repository, registry, image);
 
   if let Some(values) = matches.values_of("manifest") {
     for value in values {
