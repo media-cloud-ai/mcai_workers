@@ -1,4 +1,4 @@
-use crate::config::{McaiWorkersConfig, Provider, RepoConfig};
+use crate::config::{McaiWorkersConfig, Provider, Registry, RepoConfig};
 use clap::ArgMatches;
 use reqwest::blocking::Client;
 use semver::Version;
@@ -25,10 +25,16 @@ pub fn register_all<'a>(cfg: &mut McaiWorkersConfig, matches: &ArgMatches<'a>) {
         .workers
         .iter()
         .map(|repo| {
-          let mut rc = RepoConfig::new(repo.provider.clone(), &repo.name);
+          let mut rc = RepoConfig::new(
+            repo.provider.clone(),
+            &repo.name,
+            repo.registry.clone(),
+            &repo.image,
+          );
 
           rc.manifest_filenames = repo.manifests.clone();
           rc.docker_filenames = repo.dockerfiles.clone();
+          rc.example_filenames = repo.examples.clone();
 
           rc
         })
@@ -63,9 +69,13 @@ struct Description {
 #[derive(Debug, Deserialize)]
 struct Repository {
   provider: Provider,
+  registry: Registry,
   name: String,
+  image: String,
   #[serde(default)]
   manifests: Vec<String>,
   #[serde(default)]
   dockerfiles: Vec<String>,
+  #[serde(default)]
+  examples: Vec<String>,
 }

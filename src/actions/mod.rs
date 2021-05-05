@@ -1,3 +1,4 @@
+mod benchmark;
 mod fetch;
 mod list;
 mod register;
@@ -6,6 +7,7 @@ mod show;
 mod unregister;
 mod versions;
 
+pub use benchmark::benchmark;
 pub use fetch::fetch;
 pub use list::list;
 pub use register::register;

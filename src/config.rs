@@ -37,6 +37,8 @@ impl McaiWorkersConfig {
 pub struct RepoConfig {
   pub name: String,
   pub provider: Provider,
+  pub registry: Registry,
+  pub image: String,
   // list of Cargo.toml contents for this repository
   pub manifest_contents: Vec<String>,
   // list of Cargo.toml filenames for this repository
@@ -45,17 +47,22 @@ pub struct RepoConfig {
   pub docker_contents: Vec<String>,
   // list of Dockerfile filenames for this repository
   pub docker_filenames: Vec<String>,
+  // list of example filenames for this repository
+  pub example_filenames: Vec<String>,
 }
 
 impl RepoConfig {
-  pub fn new(provider: Provider, name: &str) -> Self {
+  pub fn new(provider: Provider, name: &str, registry: Registry, image: &str) -> Self {
     RepoConfig {
       name: name.to_string(),
       provider,
+      registry,
+      image: image.to_string(),
       manifest_contents: vec![],
       manifest_filenames: vec![],
       docker_contents: vec![],
       docker_filenames: vec![],
+      example_filenames: vec![],
     }
   }
 }
@@ -87,6 +94,30 @@ impl From<&str> for Provider {
       "github" => Provider::Github,
       "gitlab" => Provider::Gitlab,
       _ => panic!("Invalid provider"),
+    }
+  }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub enum Registry {
+  #[serde(rename = "dockerhub")]
+  DockerHub,
+  #[serde(rename = "gitlab")]
+  Gitlab,
+}
+
+impl Default for Registry {
+  fn default() -> Self {
+    Registry::DockerHub
+  }
+}
+
+impl From<&str> for Registry {
+  fn from(value: &str) -> Self {
+    match value {
+      "dockerhub" => Registry::DockerHub,
+      "gitlab" => Registry::Gitlab,
+      _ => panic!("Invalid registry"),
     }
   }
 }
